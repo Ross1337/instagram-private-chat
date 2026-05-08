@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#000000" />
+<title>Instabox</title>
+<link rel="manifest" href="/static/manifest.json" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: #f5f5f5;
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+  #app { display: flex; flex-direction: column; height: 100dvh; }
+  header { padding: max(env(safe-area-inset-top), 12px) 14px 10px;
+    border-bottom: 1px solid #1c1c1e; display: flex; align-items: center; gap: 10px; }
+  header h1 { margin: 0; font-size: 17px; font-weight: 600; flex: 1; }
+  header button { background: none; border: 0; color: #0a84ff; font-size: 16px; padding: 6px 10px; }
+  main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .thread { display: flex; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #141414;
+    align-items: center; cursor: pointer; }
+  .thread:active { background: #111; }
+  .avatar { width: 48px; height: 48px; border-radius: 50%; background: #2c2c2e;
+    display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
+  .thread-info { flex: 1; min-width: 0; }
+  .thread-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .thread-preview { color: #8e8e93; font-size: 14px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; margin-top: 2px; }
+  .unread-dot { width: 8px; height: 8px; border-radius: 50%; background: #0a84ff; }
+  .messages { padding: 14px; display: flex; flex-direction: column; gap: 6px; }
+  .msg { max-width: 75%; padding: 8px 12px; border-radius: 18px; word-wrap: break-word;
+    white-space: pre-wrap; }
+  .msg.them { background: #262628; align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.me { background: #0a84ff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .composer { display: flex; gap: 8px; padding: 8px 10px max(env(safe-area-inset-bottom), 8px);
+    border-top: 1px solid #1c1c1e; background: #000; }
+  .composer input { flex: 1; background: #1c1c1e; border: 0; color: #f5f5f5;
+    border-radius: 18px; padding: 10px 14px; font: inherit; outline: none; }
+  .composer button { background: #0a84ff; border: 0; color: white; padding: 0 14px;
+    border-radius: 18px; font-weight: 600; }
+  .composer button:disabled { opacity: 0.4; }
+  .empty { text-align: center; color: #636366; padding: 40px 20px; }
+  .loading { padding: 20px; text-align: center; color: #8e8e93; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const app = document.getElementById('app');
+let view = { name: 'list' }; // {name:'list'} | {name:'thread', id, title}
+let threads = [];
+let messages = [];
+let me = null;
+let ws = null;
+
+function fmtPreview(t) {
+  const m = t.last_message;
+  if (!m) return '';
+  return (m.text || '[média]').slice(0, 80);
+}
+
+function renderList() {
+  app.innerHTML = `
+    <header>
+      <h1>Messages</h1>
+      <button id="reload">↻</button>
+    </header>
+    <main>
+      ${threads.length === 0 ? '<div class="loading">Chargement…</div>' :
+        threads.map(t => `
+          <div class="thread" data-id="${t.id}" data-title="${escapeAttr(t.title || '')}">
+            <div class="avatar">${initials(t.title)}</div>
+            <div class="thread-info">
+              <div class="thread-title">${escapeHtml(t.title || '(sans titre)')}</div>
+              <div class="thread-preview">${escapeHtml(fmtPreview(t))}</div>
+            </div>
+            ${t.unread ? '<div class="unread-dot"></div>' : ''}
+          </div>
+        `).join('')}
+    </main>
+  `;
+  document.getElementById('reload').onclick = loadThreads;
+  app.querySelectorAll('.thread').forEach(el => {
+    el.onclick = () => openThread(el.dataset.id, el.dataset.title);
+  });
+}
+
+function renderThread() {
+  const isMe = (m) => me && String(m.user_id) === String(me);
+  app.innerHTML = `
+    <header>
+      <button id="back">‹ Retour</button>
+      <h1>${escapeHtml(view.title || '')}</h1>
+    </header>
+    <main>
+      <div class="messages" id="msgs">
+        ${messages.slice().reverse().map(m => `
+          <div class="msg ${isMe(m) ? 'me' : 'them'}">${escapeHtml(m.text || '[média]')}</div>
+        `).join('')}
+      </div>
+    </main>
+    <form class="composer" id="composer">
+      <input id="input" placeholder="Message" autocomplete="off" />
+      <button type="submit" id="send">Envoyer</button>
+    </form>
+  `;
+  document.getElementById('back').onclick = () => { view = {name:'list'}; renderList(); };
+  document.getElementById('composer').onsubmit = onSend;
+  const msgs = document.getElementById('msgs');
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+async function loadThreads() {
+  try {
+    const r = await fetch('/api/threads');
+    threads = await r.json();
+    if (view.name === 'list') renderList();
+  } catch (e) { console.error(e); }
+}
+
+async function openThread(id, title) {
+  view = { name: 'thread', id, title };
+  messages = [];
+  renderThread();
+  try {
+    const r = await fetch(`/api/threads/${id}`);
+    const data = await r.json();
+    messages = data.messages || [];
+    if (!me && data.users) {
+      // Heuristique: dans une conv, "moi" est l'expéditeur de mes derniers messages.
+      // À défaut, on tente le premier user qui n'est pas dans data.users (placeholder).
+    }
+    renderThread();
+    fetch(`/api/threads/${id}/seen`, { method: 'POST' }).catch(()=>{});
+  } catch (e) { console.error(e); }
+}
+
+async function onSend(e) {
+  e.preventDefault();
+  const input = document.getElementById('input');
+  const btn = document.getElementById('send');
+  const text = input.value.trim();
+  if (!text) return;
+  btn.disabled = true;
+  try {
+    await fetch(`/api/threads/${view.id}/send`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ text }),
+    });
+    input.value = '';
+    // Reload thread
+    const r = await fetch(`/api/threads/${view.id}`);
+    const data = await r.json();
+    messages = data.messages || [];
+    renderThread();
+  } catch (e) { alert('Erreur envoi: ' + e); }
+  finally { btn.disabled = false; }
+}
+
+function connectWS() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = (ev) => {
+    try {
+      const data = JSON.parse(ev.data);
+      if (data.type === 'thread_update') {
+        // Mettre à jour la liste
+        const idx = threads.findIndex(t => t.id === data.thread.id);
+        if (idx >= 0) threads[idx] = data.thread; else threads.unshift(data.thread);
+        if (view.name === 'list') renderList();
+        if (view.name === 'thread' && view.id === data.thread.id) {
+          // Refresh la conv en cours
+          openThread(view.id, view.title);
+        }
+      }
+    } catch (e) { console.error(e); }
+  };
+  ws.onclose = () => setTimeout(connectWS, 3000);
+  // keep-alive
+  setInterval(() => { try { ws.send('ping'); } catch(e){} }, 25000);
+}
+
+// utils
+function initials(s) { return (s||'?').split(/[\s,]+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase(); }
+function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
+function escapeAttr(s) { return escapeHtml(s); }
+
+// init
+renderList();
+loadThreads();
+connectWS();
+</script>
+</body>
+</html>
