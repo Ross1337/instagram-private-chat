@@ -42,9 +42,17 @@ export interface Message {
   };
   animated_media?: { url: string | null };
   reactions?: Reaction[];
-  reply?: { text: string; item_type: string };
-  clip?: { id: string | null };
-  media_share?: { id: string | null };
+  reply?: { id?: string; text: string; item_type: string };
+  clip?: { id: string | null; code?: string | null; thumbnail_url?: string | null; caption?: string | null };
+  media_share?: { id: string | null; code?: string | null; thumbnail_url?: string | null; caption?: string | null };
+  xma_share?: {
+    title?: string | null;
+    preview_url?: string | null;
+    video_url?: string | null;
+    header_icon_url?: string | null;
+    ig_code?: string | null;
+  };
+  client_context?: string | null;
 
   // Local optimistic flags (pas du backend)
   _pending?: boolean;
@@ -86,7 +94,17 @@ export const api = {
   threads: () => http<ThreadSummary[]>('/api/threads'),
   thread: (id: string) => http<ThreadDetail>(`/api/threads/${id}`),
   threadFresh: (id: string) => http<ThreadDetail>(`/api/threads/${id}?fresh=1`),
-  sendText: (id: string, text: string, replyTo?: { id: string; user_id: string | null }) =>
+  sendText: (
+    id: string,
+    text: string,
+    replyTo?: {
+      id: string;
+      user_id: string | null;
+      client_context?: string | null;
+      text?: string | null;
+      item_type?: string | null;
+    },
+  ) =>
     http<Message>(`/api/threads/${id}/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -94,6 +112,9 @@ export const api = {
         text,
         reply_to_id: replyTo?.id,
         reply_to_user_id: replyTo?.user_id,
+        reply_to_client_context: replyTo?.client_context,
+        reply_to_text: replyTo?.text,
+        reply_to_item_type: replyTo?.item_type,
       }),
     }),
   sendPhoto: (id: string, file: File) => {
@@ -108,6 +129,11 @@ export const api = {
   },
   markSeen: (id: string) =>
     http<{ ok: boolean }>(`/api/threads/${id}/seen`, { method: 'POST' }),
+  markItemSeen: (threadId: string, messageId: string, isVisual = false) =>
+    http<{ ok: boolean }>(
+      `/api/threads/${threadId}/items/${messageId}/seen${isVisual ? '?is_visual=1' : ''}`,
+      { method: 'POST' },
+    ),
 };
 
 export const proxyUrl = (url: string | null | undefined): string | undefined =>

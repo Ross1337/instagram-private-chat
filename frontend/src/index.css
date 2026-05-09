@@ -40,3 +40,10 @@ button { background: none; border: 0; cursor: pointer; }
 /* Safe areas iOS */
 .pt-safe { padding-top: max(env(safe-area-inset-top), 12px); }
 .pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 8px); }
+
+/* Highlight flash quand on scroll vers un message via reply click */
+.msg-flash {
+  background: rgba(10, 132, 255, 0.18);
+  box-shadow: 0 0 0 6px rgba(10, 132, 255, 0.18);
+  transition: background 0.4s, box-shadow 0.4s;
+}

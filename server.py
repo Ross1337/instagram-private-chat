@@ -113,6 +113,9 @@ class SendBody(BaseModel):
     text: str
     reply_to_id: str | None = None
     reply_to_user_id: str | None = None
+    reply_to_client_context: str | None = None
+    reply_to_text: str | None = None
+    reply_to_item_type: str | None = None
 
 
 @app.get("/api/me")
@@ -189,11 +192,12 @@ async def get_thread(thread_id: str, fresh: int = 0):
 
 
 async def _persist_sent(thread_id: str, msg: dict, fallback_text: str | None = None,
-                        fallback_item_type: str | None = None) -> dict:
+                        fallback_item_type: str | None = None,
+                        fallback_reply: dict | None = None) -> dict:
     """Ecrit le message envoye dans le cache SQLite (write-through) pour que les
     refetch suivants voient le message — sinon flicker disparais/reapparais.
     instagrapi renvoie parfois des champs null (is_sent_by_viewer, user_id, text,
-    item_type), donc on injecte ce qu'on sait depuis la requete HTTP."""
+    item_type, reply), donc on injecte ce qu'on sait depuis la requete HTTP."""
     msg["is_sent_by_viewer"] = True
     if not msg.get("user_id"):
         try:
@@ -204,6 +208,8 @@ async def _persist_sent(thread_id: str, msg: dict, fallback_text: str | None = N
         msg["text"] = fallback_text
     if not msg.get("item_type") and fallback_item_type:
         msg["item_type"] = fallback_item_type
+    if not msg.get("reply") and fallback_reply:
+        msg["reply"] = fallback_reply
     await asyncio.to_thread(cache.upsert_messages, thread_id, [msg])
     if msg.get("id"):
         last_seen_msg[thread_id] = msg["id"]
@@ -216,9 +222,20 @@ async def send_message(thread_id: str, body: SendBody):
         raise HTTPException(400, "Message vide")
     msg = await asyncio.to_thread(
         ig.send_message, thread_id, body.text,
-        body.reply_to_id, body.reply_to_user_id,
+        body.reply_to_id, body.reply_to_user_id, body.reply_to_client_context,
     )
-    return await _persist_sent(thread_id, msg, fallback_text=body.text, fallback_item_type="text")
+    fallback_reply = None
+    if body.reply_to_id:
+        fallback_reply = {
+            "id": body.reply_to_id,
+            "text": body.reply_to_text or "",
+            "item_type": body.reply_to_item_type or "text",
+        }
+    return await _persist_sent(
+        thread_id, msg,
+        fallback_text=body.text, fallback_item_type="text",
+        fallback_reply=fallback_reply,
+    )
 
 
 @app.post("/api/threads/{thread_id}/send_photo")
@@ -253,6 +270,18 @@ async def send_voice(thread_id: str, file: UploadFile = File(...)):
 async def mark_seen(thread_id: str):
     await asyncio.to_thread(ig.mark_seen, thread_id)
     return {"ok": True}
+
+
+@app.post("/api/threads/{thread_id}/items/{message_id}/seen")
+async def mark_item_seen(thread_id: str, message_id: str, is_visual: int = 0):
+    """Marque un item precis comme vu cote IG.
+    is_visual=1 → endpoint visual_threads (notif 'a vu ta photo ephemere').
+    Sinon endpoint standard (double-tick lecture)."""
+    try:
+        await asyncio.to_thread(ig.mark_item_seen, thread_id, message_id, bool(is_visual))
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 _ALLOWED_CDN_HOSTS = (

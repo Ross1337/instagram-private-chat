@@ -52,6 +52,16 @@ export function Composer({ onSendText, onSendPhoto, onSendVoice, replyTo, replyT
   async function startRec(e: React.PointerEvent) {
     e.preventDefault();
     if (recRef.current) return;
+    // Verifie d'abord que mediaDevices existe — bloque sur Safari HTTP non-localhost
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const onLocalhost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+      const isHttps = location.protocol === 'https:';
+      const hint = (!onLocalhost && !isHttps)
+        ? `: Safari exige HTTPS pour le micro hors localhost. Passe par Tailscale ou utilise localhost.`
+        : `: API micro indisponible dans ce navigateur.`;
+      alert('Micro inaccessible' + hint);
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
@@ -84,7 +94,8 @@ export function Composer({ onSendText, onSendPhoto, onSendVoice, replyTo, replyT
       setRecording(true);
       setRecSec(0);
     } catch (err: any) {
-      alert('Micro inaccessible : ' + err.message);
+      const msg = err?.message || err?.name || String(err);
+      alert('Micro inaccessible : ' + msg);
     }
   }
 

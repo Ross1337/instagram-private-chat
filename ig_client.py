@@ -22,6 +22,24 @@ log = logging.getLogger("instabox.ig")
 SESSION_FILE = Path(os.getenv("SESSION_FILE", "session.json"))
 
 
+def _media_id_to_code(media_id) -> str | None:
+    """Convertit un media_id IG (entier 64-bit) en short code (Cabc123...).
+    Algorithme base64 utilise par IG : alphabet 64 chars, 6 bits par char.
+    Renvoie None si la conversion echoue."""
+    try:
+        n = int(media_id)
+    except (TypeError, ValueError):
+        return None
+    if n <= 0:
+        return None
+    alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    code = ""
+    while n > 0:
+        code = alphabet[n & 63] + code
+        n >>= 6
+    return code
+
+
 class IGClient:
     def __init__(self, session_path: Path = SESSION_FILE):
         self.session_path = session_path
@@ -106,16 +124,21 @@ class IGClient:
 
     def send_message(self, thread_id: str, text: str,
                      reply_to_id: str | None = None,
-                     reply_to_user_id: str | None = None) -> dict:
+                     reply_to_user_id: str | None = None,
+                     reply_to_client_context: str | None = None) -> dict:
         reply_msg = None
         if reply_to_id:
             from datetime import datetime
             from instagrapi.types import DirectMessage
+            # Si on n'a pas le client_context du msg original, on tente avec l'id
+            # comme fallback (IG peut accepter, sinon le reply degrade en msg normal).
+            ctx = reply_to_client_context or str(reply_to_id)
             reply_msg = DirectMessage(
                 id=str(reply_to_id),
                 user_id=str(reply_to_user_id) if reply_to_user_id else "0",
                 timestamp=datetime.now(),
                 item_type="text",
+                client_context=ctx,
             )
         msg = self._retry(
             self.cl.direct_send, text,
@@ -165,6 +188,36 @@ class IGClient:
     def mark_seen(self, thread_id: str) -> None:
         self._retry(self.cl.direct_send_seen, int(thread_id))
 
+    def mark_item_seen(self, thread_id: str, message_id: str, is_visual: bool = False) -> None:
+        """Marque un item specifique comme vu cote IG.
+
+        Pour ephemere (is_visual), on tente l'endpoint standard avec un flag
+        explicite. Le vrai endpoint mobile-only n'est pas connu sans sniffing
+        du trafic Android — l'API actuelle peut declencher la notif ou pas
+        selon comment IG interprete l'item type cote serveur.
+        """
+        if is_visual:
+            # Tentative : endpoint standard avec flags supplementaires.
+            # Note : le visual_thread_id est different du thread_id mais non expose
+            # par instagrapi → on peut pas cibler le vrai endpoint mobile-only.
+            token = self.cl.generate_mutation_token()
+            data = self.cl.with_default_data({
+                "thread_id": str(thread_id),
+                "item_id": str(message_id),
+                "action": "mark_seen",
+                "client_context": token,
+                "use_unified_inbox": "true",
+                "is_visual_message": "1",
+            })
+            self._retry(
+                self.cl.private_request,
+                f"direct_v2/threads/{thread_id}/items/{message_id}/seen/",
+                data=data,
+                with_signature=False,
+            )
+        else:
+            self._retry(self.cl.direct_message_seen, int(thread_id), int(message_id))
+
     # ---------- serialization ----------
 
     @staticmethod
@@ -196,6 +249,7 @@ class IGClient:
             "timestamp": str(m.timestamp),
             "is_sent_by_viewer": bool(is_mine) if is_mine is not None else None,
             "text": m.text,
+            "client_context": getattr(m, "client_context", None),
         }
         if m.media:
             out["media"] = {
@@ -242,13 +296,46 @@ class IGClient:
                 pass
         if m.reply:
             try:
-                out["reply"] = {"text": m.reply.text, "item_type": m.reply.item_type}
+                out["reply"] = {
+                    "id": str(m.reply.id),
+                    "text": m.reply.text,
+                    "item_type": m.reply.item_type,
+                }
             except Exception:
                 pass
         if m.clip:
-            out["clip"] = {"id": str(m.clip.id) if m.clip.id else None}
+            out["clip"] = {
+                "id": str(m.clip.id) if m.clip.id else None,
+                "code": getattr(m.clip, "code", None),
+                "thumbnail_url": str(m.clip.thumbnail_url) if getattr(m.clip, "thumbnail_url", None) else None,
+                "caption": getattr(m.clip, "caption_text", None),
+            }
         if m.media_share:
-            out["media_share"] = {"id": str(m.media_share.id) if m.media_share.id else None}
+            out["media_share"] = {
+                "id": str(m.media_share.id) if m.media_share.id else None,
+                "code": getattr(m.media_share, "code", None),
+                "thumbnail_url": str(m.media_share.thumbnail_url) if getattr(m.media_share, "thumbnail_url", None) else None,
+                "caption": getattr(m.media_share, "caption_text", None),
+            }
+        # Nouveau format IG (depuis 2023+) : posts/reels partages arrivent en xma_share
+        # ou generic_xma. Pas de code IG dans le payload, juste preview + video_url.
+        xma = m.xma_share or (m.generic_xma[0] if m.generic_xma else None)
+        if xma:
+            try:
+                # Tentative de calcul du IG short code depuis preview_media_fbid
+                # pour pouvoir construire le permalien. Marche si fbid est un
+                # media_id IG valide (la plupart du temps pour reels/posts).
+                fbid = getattr(xma, "preview_media_fbid", None)
+                ig_code = _media_id_to_code(fbid) if fbid else None
+                out["xma_share"] = {
+                    "title": xma.header_title_text or xma.title,
+                    "preview_url": str(xma.preview_url) if xma.preview_url else None,
+                    "video_url": str(xma.video_url) if xma.video_url else None,
+                    "header_icon_url": xma.header_icon_url,
+                    "ig_code": ig_code,
+                }
+            except Exception as e:
+                log.warning("xma_share extract KO: %s", e)
         return out
 
     def _thread_summary(self, thread) -> dict:

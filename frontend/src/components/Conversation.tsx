@@ -7,6 +7,7 @@ import { Lightbox } from './Lightbox';
 import { Message } from './Message';
 import { proxyUrl } from '../api';
 import { fmtDateSep, nowTs } from '../utils';
+import { markEphemeralSeen } from '../ephemeralSeen';
 
 interface Props {
   threadId: string;
@@ -35,6 +36,7 @@ export function Conversation({ threadId, me, onBack }: Props) {
   const mePk = me?.pk || null;
   const [replyTo, setReplyTo] = useState<Msg | null>(null);
   const [openedEphemeral, setOpenedEphemeral] = useState<Msg | null>(null);
+  const [openedMedia, setOpenedMedia] = useState<{ imageUrl: string | null; videoUrl: string | null } | null>(null);
 
   // Lit la summary depuis le cache des threads (pas de fetch dedie)
   const summary = qc.getQueryData<ThreadSummary[]>(['threads'])?.find(t => t.id === threadId);
@@ -43,17 +45,28 @@ export function Conversation({ threadId, me, onBack }: Props) {
     queryKey: ['thread', threadId],
     queryFn: async () => {
       const fresh = await api.thread(threadId);
-      // Preserve les messages optimistic (pending/failed) qui ne sont pas
-      // encore confirmes par le serveur — sinon le refetch les efface.
       const previous = qc.getQueryData<ThreadDetail>(['thread', threadId]);
       if (previous) {
         const newIds = new Set(fresh.messages.map(m => m.id));
+        // 1) Preserve les optimistic en vol (pending/failed) qui ne sont pas
+        //    encore confirmes par le serveur — sinon le refetch les efface.
         const optimistic = previous.messages.filter(m =>
           (m._pending || m._failed) && !newIds.has(m.id)
         );
         if (optimistic.length) {
           fresh.messages = [...optimistic, ...fresh.messages];
         }
+        // 2) Pour chaque msg deja confirme mais dont la version fresh n'a pas
+        //    encore de media (instagrapi ne le populate pas immediatement apres
+        //    direct_send_photo), preserver le _localPhotoUrl du blob local
+        //    pour eviter le flash "[media]" en attendant le CDN URL.
+        fresh.messages = fresh.messages.map(m => {
+          const prev = previous.messages.find(p => p.id === m.id);
+          if (prev?._localPhotoUrl && !m.media?.thumbnail_url) {
+            return { ...m, _localPhotoUrl: prev._localPhotoUrl };
+          }
+          return m;
+        });
       }
       return fresh;
     },
@@ -75,7 +88,13 @@ export function Conversation({ threadId, me, onBack }: Props) {
   const sendText = useMutation({
     mutationFn: ({ text, replyTo: rt }: { text: string; replyTo: Msg | null }) =>
       api.sendText(threadId, text,
-        rt ? { id: rt.id, user_id: rt.user_id } : undefined),
+        rt ? {
+          id: rt.id,
+          user_id: rt.user_id,
+          client_context: rt.client_context,
+          text: rt.text,
+          item_type: rt.item_type,
+        } : undefined),
     onMutate: async ({ text, replyTo: rt }) => {
       const optId = 'opt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
       const optMsg: Msg = {
@@ -84,6 +103,7 @@ export function Conversation({ threadId, me, onBack }: Props) {
         timestamp: nowTs(), text, _pending: true,
         // Preview reply en optimistic
         reply: rt ? {
+          id: rt.id,
           text: rt.text || '',
           item_type: rt.item_type || 'text',
         } : undefined,
@@ -282,10 +302,14 @@ export function Conversation({ threadId, me, onBack }: Props) {
           const showDaySep = day && day !== nextDay;
 
           return (
-            <div key={m.id} className="flex flex-col gap-0.5">
+            <div key={m.id} data-msg-id={m.id} className="flex flex-col gap-0.5 transition-colors duration-300 rounded-2xl">
               <Message msg={m} isMine={!!isMine} consec={sameSender} sender={sender}
                 onReply={(target) => setReplyTo(target)}
-                onOpenEphemeral={(target) => setOpenedEphemeral(target)} />
+                onOpenEphemeral={(target) => {
+                  setOpenedEphemeral(target);
+                  markEphemeralSeen(target.id);
+                }}
+                onOpenMedia={(imageUrl, videoUrl) => setOpenedMedia({ imageUrl, videoUrl })} />
               {showDaySep && (
                 <div className="self-center text-[11px] text-[var(--color-muted)] uppercase tracking-wide font-semibold pt-3 pb-2">
                   {fmtDateSep(m.timestamp)}
@@ -312,7 +336,17 @@ export function Conversation({ threadId, me, onBack }: Props) {
           imageUrl={proxyUrl(openedEphemeral.visual_media?.image_url)}
           videoUrl={proxyUrl(openedEphemeral.visual_media?.video_url)}
           onClose={() => setOpenedEphemeral(null)}
-          hint="Photo éphémère — affichage local, IG n'est pas notifié"
+          onMarkSeenOnIG={openedEphemeral.is_sent_by_viewer
+            ? undefined
+            : () => api.markItemSeen(threadId, openedEphemeral.id, true).then(() => {})}
+          hint="Affichage local — IG n'est pas notifié sauf si tu cliques sur 'Notifier'"
+        />
+      )}
+      {openedMedia && (
+        <Lightbox
+          imageUrl={openedMedia.imageUrl}
+          videoUrl={openedMedia.videoUrl}
+          onClose={() => setOpenedMedia(null)}
         />
       )}
     </div>

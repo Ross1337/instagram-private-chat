@@ -1,18 +1,38 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface Props {
   imageUrl?: string | null;
   videoUrl?: string | null;
   onClose: () => void;
+  onMarkSeenOnIG?: () => Promise<void> | void;
   hint?: string;
 }
 
-export function Lightbox({ imageUrl, videoUrl, onClose, hint }: Props) {
+export function Lightbox({ imageUrl, videoUrl, onClose, onMarkSeenOnIG, hint }: Props) {
+  const [notifying, setNotifying] = useState(false);
+  const [notified, setNotified] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  async function handleNotify(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!onMarkSeenOnIG || notifying || notified) return;
+    setNotifying(true);
+    setError(null);
+    try {
+      await onMarkSeenOnIG();
+      setNotified(true);
+    } catch (err: any) {
+      setError(err.message || 'Erreur');
+    } finally {
+      setNotifying(false);
+    }
+  }
 
   return (
     <div
@@ -38,11 +58,24 @@ export function Lightbox({ imageUrl, videoUrl, onClose, hint }: Props) {
       ) : (
         <div className="text-white/70">Pas de média</div>
       )}
-      {hint && (
-        <div className="absolute bottom-6 left-0 right-0 text-center text-white/70 text-sm px-4">
-          {hint}
-        </div>
-      )}
+      <div className="absolute bottom-6 left-0 right-0 flex flex-col items-center gap-2 px-4"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        {hint && <div className="text-white/70 text-sm text-center">{hint}</div>}
+        {onMarkSeenOnIG && (
+          <button
+            onClick={handleNotify}
+            disabled={notifying || notified}
+            className={`px-4 py-2 rounded-full text-sm font-semibold ${
+              notified
+                ? 'bg-green-500/20 text-green-300'
+                : 'bg-white/10 text-white active:bg-white/20'
+            } disabled:opacity-60`}
+          >
+            {notifying ? '...' : notified ? '✓ Notifié à Instagram' : 'Notifier Instagram (vu)'}
+          </button>
+        )}
+        {error && <div className="text-red-400 text-xs">{error}</div>}
+      </div>
     </div>
   );
 }
