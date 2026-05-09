@@ -2,197 +2,968 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#000000" />
 <title>Instabox</title>
 <link rel="manifest" href="/static/manifest.json" />
 <style>
-  :root { color-scheme: dark; }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: #000; color: #f5f5f5;
+  :root {
+    color-scheme: dark;
+    --bg: #000;
+    --bg-elev: #121212;
+    --surface: #1c1c1e;
+    --surface-2: #262628;
+    --border: #1f1f1f;
+    --text: #f5f5f5;
+    --muted: #8e8e93;
+    --accent: #0a84ff;
+    --accent-hover: #1a94ff;
+    --bubble-them: #262628;
+    --bubble-me-1: #3797f0;
+    --bubble-me-2: #1d75c4;
+    --danger: #ff3b30;
+    --safe-top: env(safe-area-inset-top);
+    --safe-bot: env(safe-area-inset-bottom);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text);
     font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
-  #app { display: flex; flex-direction: column; height: 100dvh; }
-  header { padding: max(env(safe-area-inset-top), 12px) 14px 10px;
-    border-bottom: 1px solid #1c1c1e; display: flex; align-items: center; gap: 10px; }
-  header h1 { margin: 0; font-size: 17px; font-weight: 600; flex: 1; }
-  header button { background: none; border: 0; color: #0a84ff; font-size: 16px; padding: 6px 10px; }
-  main { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-  .thread { display: flex; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #141414;
-    align-items: center; cursor: pointer; }
-  .thread:active { background: #111; }
-  .avatar { width: 48px; height: 48px; border-radius: 50%; background: #2c2c2e;
-    display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0; }
+  button, input { font: inherit; color: inherit; }
+  button { background: none; border: 0; cursor: pointer; }
+
+  #app { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
+
+  /* ---------- Header ---------- */
+  .hdr { display: flex; align-items: center; gap: 8px;
+    padding: max(var(--safe-top), 12px) 12px 10px; border-bottom: 1px solid var(--border);
+    flex-shrink: 0; background: var(--bg); position: sticky; top: 0; z-index: 10; }
+  .hdr-back { color: var(--text); padding: 6px 8px; font-size: 22px; line-height: 1; }
+  .hdr-title { flex: 1; font-size: 16px; font-weight: 600; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .hdr-title.big { font-size: 22px; }
+  .hdr-title-row { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+  .hdr-title-text { display: flex; flex-direction: column; min-width: 0; }
+  .hdr-title-text .name { font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hdr-title-text .sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hdr-action { color: var(--accent); padding: 6px 10px; font-size: 16px; font-weight: 600; }
+
+  /* ---------- Threads list ---------- */
+  .threads { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .thread { display: flex; gap: 12px; padding: 10px 14px; align-items: center; cursor: pointer;
+    border-bottom: 1px solid #0d0d0d; }
+  .thread:active { background: #0a0a0a; }
   .thread-info { flex: 1; min-width: 0; }
-  .thread-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .thread-preview { color: #8e8e93; font-size: 14px; white-space: nowrap; overflow: hidden;
-    text-overflow: ellipsis; margin-top: 2px; }
-  .unread-dot { width: 8px; height: 8px; border-radius: 50%; background: #0a84ff; }
-  .messages { padding: 14px; display: flex; flex-direction: column; gap: 6px; }
-  .msg { max-width: 75%; padding: 8px 12px; border-radius: 18px; word-wrap: break-word;
-    white-space: pre-wrap; }
-  .msg.them { background: #262628; align-self: flex-start; border-bottom-left-radius: 4px; }
-  .msg.me { background: #0a84ff; align-self: flex-end; border-bottom-right-radius: 4px; }
-  .composer { display: flex; gap: 8px; padding: 8px 10px max(env(safe-area-inset-bottom), 8px);
-    border-top: 1px solid #1c1c1e; background: #000; }
-  .composer input { flex: 1; background: #1c1c1e; border: 0; color: #f5f5f5;
-    border-radius: 18px; padding: 10px 14px; font: inherit; outline: none; }
-  .composer button { background: #0a84ff; border: 0; color: white; padding: 0 14px;
-    border-radius: 18px; font-weight: 600; }
-  .composer button:disabled { opacity: 0.4; }
-  .empty { text-align: center; color: #636366; padding: 40px 20px; }
-  .loading { padding: 20px; text-align: center; color: #8e8e93; }
+  .thread-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: 14px; }
+  .thread-preview { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; margin-top: 2px; display: flex; gap: 4px; align-items: center; }
+  .thread.unread .thread-title { font-weight: 700; }
+  .thread.unread .thread-preview { color: var(--text); font-weight: 500; }
+  .unread-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent);
+    flex-shrink: 0; }
+
+  /* ---------- Avatar ---------- */
+  .avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--surface);
+    display: flex; align-items: center; justify-content: center; font-weight: 600; flex-shrink: 0;
+    overflow: hidden; position: relative; font-size: 18px; color: var(--text); }
+  .avatar.sm { width: 28px; height: 28px; font-size: 12px; }
+  .avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+  /* ---------- Conversation ---------- */
+  .conv { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .messages { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 12px 12px 4px; display: flex; flex-direction: column-reverse; gap: 2px; }
+  .day-sep { align-self: center; padding: 14px 0 8px; color: var(--muted); font-size: 11px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px; }
+  .msg-row { display: flex; gap: 8px; align-items: flex-end; max-width: 100%; }
+  .msg-row.me { flex-direction: row-reverse; }
+  .msg-row .avatar.sm { margin-bottom: 2px; }
+  .msg-row.me .avatar.sm { display: none; }
+  .msg { max-width: 78%; padding: 8px 12px; border-radius: 18px; word-break: break-word;
+    white-space: pre-wrap; font-size: 14.5px; }
+  .msg.them { background: var(--bubble-them); border-bottom-left-radius: 4px; }
+  .msg.me { background: linear-gradient(135deg, var(--bubble-me-1), var(--bubble-me-2));
+    color: white; border-bottom-right-radius: 4px; }
+  .msg.consec-them { border-bottom-left-radius: 18px; border-top-left-radius: 4px; }
+  .msg.consec-me { border-bottom-right-radius: 18px; border-top-right-radius: 4px; }
+  .msg.media { padding: 0; overflow: hidden; max-width: 60%; background: transparent; }
+  .msg.media img, .msg.media video { display: block; width: 100%; max-height: 280px;
+    object-fit: cover; border-radius: 18px; }
+  .msg.audio { padding: 6px 8px; min-width: 200px; }
+  .msg.audio audio { display: block; height: 32px; width: 100%; }
+  .msg.placeholder { background: var(--surface); color: var(--muted); font-style: italic; }
+  .msg.pending { opacity: 0.55; }
+  .msg.failed { background: rgba(255,59,48,0.2); }
+  .reactions { display: flex; gap: 2px; padding: 0 12px; margin-top: -4px; margin-bottom: 6px;
+    font-size: 13px; }
+  .msg-row.me .reactions { justify-content: flex-end; }
+  .reactions span { background: var(--surface); padding: 2px 6px; border-radius: 12px; }
+  .timestamp { font-size: 11px; color: var(--muted); align-self: center; padding: 12px 0 4px; }
+
+  /* ---------- Composer ---------- */
+  .composer { padding: 8px 8px max(var(--safe-bot), 8px); border-top: 1px solid var(--border);
+    background: var(--bg); flex-shrink: 0; }
+  .composer-row { display: flex; align-items: flex-end; gap: 6px; }
+  .icon-btn { width: 36px; height: 36px; flex-shrink: 0; display: flex; align-items: center;
+    justify-content: center; border-radius: 50%; color: var(--text); font-size: 20px; }
+  .icon-btn:active { background: var(--surface); }
+  .icon-btn.accent { color: var(--accent); }
+  .icon-btn:disabled { opacity: 0.3; }
+  .input-wrap { flex: 1; background: var(--surface); border-radius: 22px; display: flex;
+    align-items: flex-end; padding: 4px 4px 4px 14px; min-height: 36px; }
+  .input-wrap textarea { flex: 1; background: none; border: 0; color: var(--text); resize: none;
+    outline: none; font: inherit; padding: 7px 0; max-height: 120px; line-height: 1.35; }
+  .send-btn { color: var(--accent); font-weight: 600; padding: 6px 10px; font-size: 15px; }
+  .send-btn:disabled { color: var(--muted); }
+
+  /* Recording state */
+  .composer.recording .input-wrap { background: rgba(255,59,48,0.1); }
+  .composer.recording .rec-indicator { display: flex; }
+  .rec-indicator { display: none; align-items: center; gap: 8px; color: var(--danger);
+    flex: 1; padding: 0 14px; }
+  .rec-pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--danger);
+    animation: pulse 1s ease-in-out infinite; flex-shrink: 0; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* ---------- Misc ---------- */
+  .empty { text-align: center; color: var(--muted); padding: 40px 20px; }
+  .loading { padding: 30px; text-align: center; color: var(--muted); }
+  .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    background: var(--surface-2); padding: 10px 18px; border-radius: 22px; color: var(--text);
+    font-size: 13px; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+    z-index: 1000; max-width: 80%; }
+  .toast.show { opacity: 1; }
+
+  .composing-preview { padding: 8px 12px; display: flex; gap: 8px; align-items: center;
+    background: var(--surface); border-radius: 12px; margin-bottom: 6px; }
+  .composing-preview img { height: 48px; border-radius: 8px; }
+  .composing-preview .x { color: var(--muted); padding: 4px 8px; }
+
+  /* spinner */
+  .spinner { width: 20px; height: 20px; border-radius: 50%;
+    border: 2px solid var(--surface); border-top-color: var(--accent);
+    animation: spin 0.8s linear infinite; display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* hidden file inputs */
+  .hidden-input { display: none; }
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div class="toast" id="toast"></div>
+
+<input type="file" accept="image/*" class="hidden-input" id="file-photo" />
+<input type="file" accept="image/*" capture="environment" class="hidden-input" id="file-camera" />
 
 <script>
-const app = document.getElementById('app');
-let view = { name: 'list' }; // {name:'list'} | {name:'thread', id, title}
-let threads = [];
-let messages = [];
-let me = null;
-let ws = null;
+"use strict";
 
-function fmtPreview(t) {
-  const m = t.last_message;
-  if (!m) return '';
-  return (m.text || '[média]').slice(0, 80);
+// ---------- State ----------
+const LS_THREADS = 'instabox.threads';
+const LS_ME = 'instabox.me';
+
+function lsGet(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch (e) { return fallback; }
+}
+function lsSet(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); }
+  catch (e) { console.warn('lsSet KO', key, e); }
 }
 
+const state = {
+  view: { name: 'list' },          // {name:'list'} | {name:'thread', id, title, users}
+  threads: lsGet(LS_THREADS, []),  // hydrate depuis localStorage avant tout fetch
+  threadCache: {},                  // thread_id -> full thread (with messages)
+  me: lsGet(LS_ME, null),
+  ws: null,
+  activePollTimer: null,
+  loadingThreads: false,
+  pendingMedia: null,               // { kind:'photo'|'voice', file, previewUrl }
+  recorder: null,
+  recordedChunks: [],
+};
+
+const app = document.getElementById('app');
+const toastEl = document.getElementById('toast');
+const filePhoto = document.getElementById('file-photo');
+const fileCamera = document.getElementById('file-camera');
+
+// ---------- Utils ----------
+const $ = (sel, root=document) => root.querySelector(sel);
+const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);
+const escAttr = s => escHtml(s);
+
+function toast(msg, ms=2500) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toastEl.classList.remove('show'), ms);
+}
+
+function proxyUrl(url) {
+  if (!url) return null;
+  return '/api/proxy?url=' + encodeURIComponent(url);
+}
+
+function initials(s) {
+  return (s || '?').split(/[\s,_.]+/).filter(Boolean).slice(0,2)
+    .map(x => x[0] || '').join('').toUpperCase() || '?';
+}
+
+function pickThreadAvatar(t) {
+  if (!t.users || t.users.length === 0) return null;
+  // Pour DM 1-1 : prend l'autre user
+  const others = state.me ? t.users.filter(u => String(u.pk) !== String(state.me.pk)) : t.users;
+  return others[0]?.profile_pic_url || null;
+}
+
+function pickThreadDisplayName(t) {
+  if (t.title) return t.title;
+  const others = state.me ? t.users.filter(u => String(u.pk) !== String(state.me.pk)) : t.users;
+  if (others.length === 1) return others[0].full_name || others[0].username;
+  if (others.length === 0) return '(moi)';
+  return others.map(u => u.username).slice(0, 3).join(', ') + (others.length > 3 ? '…' : '');
+}
+
+function fmtPreview(m) {
+  if (!m) return '';
+  if (m.text) return m.text;
+  if (m.media?.thumbnail_url && m.media?.audio_url) return '🎤 Message vocal';
+  if (m.media?.thumbnail_url) return m.media.video_url ? '🎬 Vidéo' : '📷 Photo';
+  if (m.animated_media) return '🎞️ GIF';
+  if (m.visual_media) return '🔥 Photo éphémère';
+  if (m.clip) return '🎞️ Reel partagé';
+  if (m.media_share) return '📌 Post partagé';
+  if (m.item_type === 'like') return '❤️';
+  return `[${m.item_type || 'message'}]`;
+}
+
+function fmtTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts.replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const diffDays = (now - d) / 86400000;
+  if (diffDays < 7) return d.toLocaleDateString([], { weekday: 'short' });
+  return d.toLocaleDateString([], { day: '2-digit', month: '2-digit' });
+}
+
+function fmtDateSep(ts) {
+  const d = new Date(ts.replace(' ', 'T') + 'Z');
+  if (isNaN(d)) return '';
+  return d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+}
+
+// ---------- Render: list ----------
 function renderList() {
-  app.innerHTML = `
-    <header>
-      <h1>Messages</h1>
-      <button id="reload">↻</button>
-    </header>
-    <main>
-      ${threads.length === 0 ? '<div class="loading">Chargement…</div>' :
-        threads.map(t => `
-          <div class="thread" data-id="${t.id}" data-title="${escapeAttr(t.title || '')}">
-            <div class="avatar">${initials(t.title)}</div>
-            <div class="thread-info">
-              <div class="thread-title">${escapeHtml(t.title || '(sans titre)')}</div>
-              <div class="thread-preview">${escapeHtml(fmtPreview(t))}</div>
-            </div>
-            ${t.unread ? '<div class="unread-dot"></div>' : ''}
-          </div>
-        `).join('')}
-    </main>
+  const html = `
+    <div class="hdr">
+      <div class="hdr-title-row">
+        <div class="hdr-title big">${state.me ? escHtml(state.me.username || 'Messages') : 'Messages'}</div>
+      </div>
+      <button class="hdr-action" id="reload">↻</button>
+    </div>
+    <div class="threads" id="threads">
+      ${state.loadingThreads && state.threads.length === 0
+        ? '<div class="loading"><div class="spinner"></div></div>'
+        : state.threads.length === 0
+          ? '<div class="empty">Aucune conversation</div>'
+          : state.threads.map(renderThreadRow).join('')}
+    </div>
   `;
-  document.getElementById('reload').onclick = loadThreads;
+  app.innerHTML = html;
+  $('#reload').onclick = loadThreads;
   app.querySelectorAll('.thread').forEach(el => {
-    el.onclick = () => openThread(el.dataset.id, el.dataset.title);
+    el.onclick = () => openThread(el.dataset.id);
   });
 }
 
-function renderThread() {
-  const isMe = (m) => me && String(m.user_id) === String(me);
-  app.innerHTML = `
-    <header>
-      <button id="back">‹ Retour</button>
-      <h1>${escapeHtml(view.title || '')}</h1>
-    </header>
-    <main>
-      <div class="messages" id="msgs">
-        ${messages.slice().reverse().map(m => `
-          <div class="msg ${isMe(m) ? 'me' : 'them'}">${escapeHtml(m.text || '[média]')}</div>
-        `).join('')}
+function renderThreadRow(t) {
+  const avatarUrl = pickThreadAvatar(t);
+  const name = pickThreadDisplayName(t);
+  const last = t.last_message;
+  const preview = fmtPreview(last);
+  const ts = last ? fmtTime(last.timestamp) : '';
+  return `
+    <div class="thread ${t.unread ? 'unread' : ''}" data-id="${escAttr(t.id)}">
+      <div class="avatar">${avatarUrl
+        ? `<img src="${proxyUrl(avatarUrl)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'${initials(name)}'}))" />`
+        : escHtml(initials(name))}</div>
+      <div class="thread-info">
+        <div class="thread-title">${escHtml(name)}</div>
+        <div class="thread-preview">${escHtml(preview)} <span style="opacity:.6">· ${escHtml(ts)}</span></div>
       </div>
-    </main>
-    <form class="composer" id="composer">
-      <input id="input" placeholder="Message" autocomplete="off" />
-      <button type="submit" id="send">Envoyer</button>
-    </form>
+      ${t.unread ? '<div class="unread-dot"></div>' : ''}
+    </div>
   `;
-  document.getElementById('back').onclick = () => { view = {name:'list'}; renderList(); };
-  document.getElementById('composer').onsubmit = onSend;
-  const msgs = document.getElementById('msgs');
-  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ---------- Render: conversation ----------
+function renderConv() {
+  const v = state.view;
+  const cached = state.threadCache[v.id];
+  const messages = cached?.messages || [];
+  const users = cached?.users || v.users || [];
+
+  // Preserve l'etat utilisateur a travers les re-renders (textarea + scroll)
+  const prevInput = document.getElementById('input')?.value || '';
+  const prevMsgsEl = document.getElementById('msgs');
+  const prevScroll = prevMsgsEl ? prevMsgsEl.scrollTop : 0;
+  const wasFocused = document.activeElement?.id === 'input';
+  const userById = Object.fromEntries(users.map(u => [String(u.pk), u]));
+  const meId = state.me ? String(state.me.pk) : null;
+
+  const subtitle = users.length > 1
+    ? users.filter(u => String(u.pk) !== meId).map(u => u.username).slice(0,3).join(', ')
+    : '';
+
+  const avatarUrl = pickThreadAvatar({ users, title: v.title });
+
+  // Groupe les messages consécutifs par sender + ajoute des séparateurs de jour
+  // messages[0] = le plus récent
+  let html = '';
+  let lastDay = null;
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+    const next = messages[i+1];  // plus ancien (vu l'ordre)
+    const day = m.timestamp ? new Date(m.timestamp.replace(' ', 'T') + 'Z').toDateString() : '';
+    if (day !== lastDay && day) {
+      html += `<div class="day-sep">${escHtml(fmtDateSep(m.timestamp))}</div>`;
+      lastDay = day;
+    }
+    const isMine = m.is_sent_by_viewer === true || (meId && String(m.user_id) === meId);
+    const sameSender = next && (next.is_sent_by_viewer === m.is_sent_by_viewer)
+      && String(next.user_id||'') === String(m.user_id||'');
+    const sender = userById[String(m.user_id)] || null;
+    const senderAvatar = sender?.profile_pic_url;
+    html += renderMessage(m, isMine, sameSender, senderAvatar, sender);
+  }
+
+  app.innerHTML = `
+    <div class="hdr">
+      <button class="hdr-back" id="back">‹</button>
+      <div class="hdr-title-row">
+        <div class="avatar sm">${avatarUrl
+          ? `<img src="${proxyUrl(avatarUrl)}" alt="" />`
+          : escHtml(initials(v.title))}</div>
+        <div class="hdr-title-text">
+          <div class="name">${escHtml(v.title || pickThreadDisplayName({users, title:v.title}))}</div>
+          ${subtitle ? `<div class="sub">${escHtml(subtitle)}</div>` : ''}
+        </div>
+      </div>
+    </div>
+    <div class="conv">
+      <div class="messages" id="msgs">
+        ${html || '<div class="loading"><div class="spinner"></div></div>'}
+      </div>
+      <div class="composer" id="composer">
+        ${state.pendingMedia ? renderPendingMedia() : ''}
+        <div class="composer-row">
+          <button class="icon-btn" id="btn-camera" aria-label="Camera">📷</button>
+          <button class="icon-btn" id="btn-photo" aria-label="Photo">🖼️</button>
+          <div class="input-wrap">
+            <textarea id="input" placeholder="Message..." rows="1"></textarea>
+          </div>
+          <button class="icon-btn accent" id="btn-mic" aria-label="Voice">🎤</button>
+          <button class="send-btn" id="btn-send" disabled>Envoyer</button>
+        </div>
+        <div class="rec-indicator">
+          <div class="rec-pulse"></div>
+          <span id="rec-time">0:00</span>
+          <button class="icon-btn" id="rec-cancel" style="margin-left:auto">✕</button>
+          <button class="send-btn" id="rec-send">Envoyer</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  $('#back').onclick = () => goList();
+  $('#btn-camera').onclick = () => fileCamera.click();
+  $('#btn-photo').onclick = () => filePhoto.click();
+  $('#btn-mic').onpointerdown = startRecording;
+  $('#btn-mic').onpointerup = stopRecording;
+  $('#btn-mic').onpointercancel = stopRecording;
+  $('#btn-mic').onpointerleave = stopRecording;
+  $('#rec-cancel').onclick = cancelRecording;
+  $('#rec-send').onclick = stopRecording;
+  $('#btn-send').onclick = onSendText;
+
+  const input = $('#input');
+  input.oninput = () => {
+    $('#btn-send').disabled = !input.value.trim() && !state.pendingMedia;
+    input.style.height = 'auto';
+    input.style.height = Math.min(120, input.scrollHeight) + 'px';
+  };
+  input.onkeydown = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+      e.preventDefault();
+      onSendText();
+    }
+  };
+
+  if (state.pendingMedia) $('#btn-send').disabled = false;
+
+  // Restaure le texte en cours de saisie + focus
+  if (prevInput) {
+    input.value = prevInput;
+    input.style.height = 'auto';
+    input.style.height = Math.min(120, input.scrollHeight) + 'px';
+    $('#btn-send').disabled = !prevInput.trim() && !state.pendingMedia;
+  }
+  if (wasFocused) {
+    input.focus();
+    // place le curseur a la fin
+    const len = input.value.length;
+    try { input.setSelectionRange(len, len); } catch(e) {}
+  }
+  // Restaure le scroll (sinon: column-reverse → bas)
+  $('#msgs').scrollTop = prevScroll || 0;
+}
+
+function renderPendingMedia() {
+  const p = state.pendingMedia;
+  if (!p) return '';
+  const label = p.kind === 'photo' ? 'Photo' : p.kind === 'voice' ? 'Audio' : 'Fichier';
+  return `
+    <div class="composing-preview">
+      ${p.previewUrl ? `<img src="${escAttr(p.previewUrl)}" alt="" />` : ''}
+      <div style="flex:1">${escHtml(label)} prêt à envoyer</div>
+      <button class="x" id="cancel-pending">✕</button>
+    </div>
+  `;
+}
+
+function renderMessage(m, isMine, sameSender, avatarUrl, sender) {
+  const cls = isMine ? 'me' : 'them';
+  const consec = sameSender ? (isMine ? 'consec-me' : 'consec-them') : '';
+  const showAvatar = !isMine && !sameSender;
+  const reactions = m.reactions && m.reactions.length
+    ? `<div class="reactions">${m.reactions.map(r => `<span>${escHtml(r.emoji||'')}</span>`).join('')}</div>`
+    : '';
+
+  // Determine bubble content based on message type
+  let bubble = '';
+  let isMedia = false;
+
+  if (m.media?.audio_url) {
+    bubble = `<audio controls preload="none" src="${proxyUrl(m.media.audio_url)}"></audio>`;
+    return wrapMsg(`<div class="msg audio ${cls} ${consec}">${bubble}</div>`, isMine, showAvatar, avatarUrl, sender, reactions);
+  }
+  if (m.media?.thumbnail_url || m._localPhotoUrl) {
+    isMedia = true;
+    const thumb = m._localPhotoUrl || proxyUrl(m.media.thumbnail_url);
+    if (m.media?.video_url) {
+      bubble = `<video controls preload="metadata" poster="${proxyUrl(m.media.thumbnail_url)}" src="${proxyUrl(m.media.video_url)}"></video>`;
+    } else {
+      bubble = `<img src="${thumb}" alt="" loading="lazy" />`;
+    }
+    const stat = m._pending ? 'pending' : (m._failed ? 'failed' : '');
+    return wrapMsg(`<div class="msg media ${stat}">${bubble}</div>`, isMine, showAvatar, avatarUrl, sender, reactions);
+  }
+  if (m.animated_media?.url) {
+    return wrapMsg(`<div class="msg media"><img src="${proxyUrl(m.animated_media.url)}" alt="GIF" /></div>`, isMine, showAvatar, avatarUrl, sender, reactions);
+  }
+  if (m.visual_media) {
+    bubble = '🔥 Photo éphémère';
+    return wrapMsg(`<div class="msg placeholder ${cls} ${consec}">${bubble}</div>`, isMine, showAvatar, avatarUrl, sender, reactions);
+  }
+  if (m.clip) {
+    return wrapMsg(`<div class="msg placeholder ${cls} ${consec}">🎞️ Reel partagé</div>`, isMine, showAvatar, avatarUrl, sender, reactions);
+  }
+  if (m.media_share) {
+    return wrapMsg(`<div class="msg placeholder ${cls} ${consec}">📌 Post partagé</div>`, isMine, showAvatar, avatarUrl, sender, reactions);
+  }
+  if (m.item_type === 'like') {
+    return wrapMsg(`<div class="msg ${cls} ${consec}" style="font-size:32px;padding:4px 12px">❤️</div>`, isMine, showAvatar, avatarUrl, sender, reactions);
+  }
+  const status = m._pending ? 'pending' : (m._failed ? 'failed' : '');
+  if (m.text) {
+    return wrapMsg(`<div class="msg ${cls} ${consec} ${status}">${escHtml(m.text)}</div>`, isMine, showAvatar, avatarUrl, sender, reactions);
+  }
+  return wrapMsg(`<div class="msg placeholder ${cls} ${consec} ${status}">[${escHtml(m.item_type || 'message')}]</div>`, isMine, showAvatar, avatarUrl, sender, reactions);
+}
+
+function wrapMsg(bubbleHtml, isMine, showAvatar, avatarUrl, sender, reactionsHtml) {
+  const initialsText = sender ? initials(sender.full_name || sender.username) : '?';
+  const avatar = showAvatar
+    ? `<div class="avatar sm">${avatarUrl
+        ? `<img src="${proxyUrl(avatarUrl)}" alt="" />`
+        : escHtml(initialsText)}</div>`
+    : (isMine ? '' : '<div class="avatar sm" style="visibility:hidden"></div>');
+  return `<div class="msg-row ${isMine ? 'me' : ''}">${avatar}${bubbleHtml}</div>${reactionsHtml}`;
+}
+
+// ---------- Navigation ----------
+function goList() {
+  state.view = { name: 'list' };
+  if (state.activePollTimer) { clearInterval(state.activePollTimer); state.activePollTimer = null; }
+  state.pendingMedia = null;
+  renderList();
+}
+
+async function openThread(id) {
+  const t = state.threads.find(x => x.id === id);
+  state.view = {
+    name: 'thread', id,
+    title: t ? pickThreadDisplayName(t) : '',
+    users: t?.users || [],
+  };
+  state.pendingMedia = null;
+  renderConv();
+
+  // Fetch fresh thread
+  await loadThread(id, /*silent=*/false);
+
+  // Mark seen
+  fetch(`/api/threads/${id}/seen`, { method: 'POST' }).catch(()=>{});
+
+  // Polling actif sur la conv ouverte (toutes 8s — 450/h, sustainable)
+  if (state.activePollTimer) clearInterval(state.activePollTimer);
+  state.activePollTimer = setInterval(() => {
+    if (state.view.name === 'thread' && state.view.id === id) {
+      loadThread(id, /*silent=*/true);
+    }
+  }, 8000);
+}
+
+async function loadThread(id, silent) {
+  try {
+    const r = await fetch(`/api/threads/${id}`);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    // Preserve les messages optimistic en vol (POST pas encore revenu / a echoue)
+    const existing = state.threadCache[id];
+    if (existing) {
+      const newIds = new Set((data.messages || []).map(m => m.id));
+      const optimistic = existing.messages.filter(m =>
+        (m._pending || m._failed) && !newIds.has(m.id)
+      );
+      if (optimistic.length) {
+        data.messages = [...optimistic, ...(data.messages || [])];
+      }
+    }
+    state.threadCache[id] = data;
+    if (state.view.name === 'thread' && state.view.id === id) maybeRenderConv();
+  } catch (e) {
+    if (!silent) toast('Chargement KO: ' + e.message);
+    console.error(e);
+  }
+}
+
+// Hash compact des champs qui affectent le rendu (skip render si inchange)
+let _lastThreadsHash = '';
+let _lastMsgsHash = '';
+function threadsHash(threads) {
+  return (threads || []).map(t => {
+    const lm = t.last_message || {};
+    return `${t.id}|${t.unread?1:0}|${lm.id||''}|${lm.text||''}|${t.last_activity_at||''}`;
+  }).join('§');
+}
+function messagesHash(messages) {
+  return (messages || []).map(m =>
+    `${m.id}|${m._pending?1:0}|${m._failed?1:0}|${m.text||''}|${(m.media&&m.media.thumbnail_url)||''}`
+  ).join('§');
+}
+function maybeRenderList() {
+  const h = threadsHash(state.threads);
+  if (h !== _lastThreadsHash) {
+    _lastThreadsHash = h;
+    renderList();
+  }
+}
+function maybeRenderConv() {
+  const cached = state.threadCache[state.view.id];
+  const h = messagesHash(cached?.messages);
+  if (h !== _lastMsgsHash) {
+    _lastMsgsHash = h;
+    renderConv();
+  }
+}
+
+function setThreads(threads) {
+  state.threads = threads;
+  lsSet(LS_THREADS, threads);
+  if (state.view.name === 'list') maybeRenderList();
+}
+
+function patchThread(thread) {
+  const idx = state.threads.findIndex(t => t.id === thread.id);
+  if (idx >= 0) state.threads[idx] = thread;
+  else state.threads.unshift(thread);
+  state.threads.sort((a, b) => {
+    const ta = a.last_activity_at || '';
+    const tb = b.last_activity_at || '';
+    return tb.localeCompare(ta);
+  });
+  lsSet(LS_THREADS, state.threads);
+  if (state.view.name === 'list') maybeRenderList();
+}
+
+// Dedup intelligent pour les messages WS : remplace l'optimistic match
+// au lieu d'inserer un doublon (evite le flash gris-puis-bleu).
+function mergeIncomingMessage(tid, m) {
+  const cached = state.threadCache[tid];
+  if (!cached) return;
+  if (cached.messages.some(x => x.id === m.id)) return;
+  if (m.is_sent_by_viewer) {
+    const optIdx = cached.messages.findIndex(x =>
+      x._pending && x.is_sent_by_viewer &&
+      ((m.text && x.text === m.text) || (!m.text && !x.text && x.item_type === m.item_type))
+    );
+    if (optIdx >= 0) {
+      cached.messages[optIdx] = { ...m, is_sent_by_viewer: true };
+      if (state.view.name === 'thread' && state.view.id === tid) maybeRenderConv();
+      return;
+    }
+  }
+  cached.messages.unshift(m);
+  if (state.view.name === 'thread' && state.view.id === tid) maybeRenderConv();
 }
 
 async function loadThreads() {
+  // Pas de spinner si on a deja des donnees (cache localStorage)
+  state.loadingThreads = state.threads.length === 0;
+  if (state.view.name === 'list') renderList();
   try {
     const r = await fetch('/api/threads');
-    threads = await r.json();
-    if (view.name === 'list') renderList();
-  } catch (e) { console.error(e); }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const fresh = await r.json();
+    setThreads(fresh);
+  } catch (e) {
+    toast('Sync threads KO: ' + e.message);
+  } finally {
+    state.loadingThreads = false;
+    if (state.view.name === 'list') renderList();
+  }
 }
 
-async function openThread(id, title) {
-  view = { name: 'thread', id, title };
-  messages = [];
-  renderThread();
+async function loadMe() {
   try {
-    const r = await fetch(`/api/threads/${id}`);
-    const data = await r.json();
-    messages = data.messages || [];
-    if (!me && data.users) {
-      // Heuristique: dans une conv, "moi" est l'expéditeur de mes derniers messages.
-      // À défaut, on tente le premier user qui n'est pas dans data.users (placeholder).
+    const r = await fetch('/api/me');
+    if (r.ok) {
+      state.me = await r.json();
+      lsSet(LS_ME, state.me);
+      // Re-render l'inbox (le titre depend de me.username)
+      if (state.view.name === 'list') renderList();
     }
-    renderThread();
-    fetch(`/api/threads/${id}/seen`, { method: 'POST' }).catch(()=>{});
   } catch (e) { console.error(e); }
 }
 
-async function onSend(e) {
-  e.preventDefault();
-  const input = document.getElementById('input');
-  const btn = document.getElementById('send');
-  const text = input.value.trim();
+// ---------- Send (optimistic UI) ----------
+function nowTs() {
+  // Format compatible avec fmtTime / fmtDateSep ("YYYY-MM-DD HH:MM:SS")
+  return new Date().toISOString().slice(0,19).replace('T',' ');
+}
+
+function insertOptimistic(tid, msg) {
+  const cached = state.threadCache[tid];
+  if (cached) {
+    cached.messages.unshift(msg);
+    if (state.view.name === 'thread' && state.view.id === tid) renderConv();
+  }
+  // Bump le thread en haut de la liste avec le last_message mis a jour
+  const t = state.threads.find(x => x.id === tid);
+  if (t) {
+    const updated = { ...t, last_message: msg, last_activity_at: msg.timestamp };
+    patchThread(updated);
+  }
+}
+
+function updateOptimistic(tid, optId, patch) {
+  const cached = state.threadCache[tid];
+  if (!cached) return;
+  const i = cached.messages.findIndex(m => m.id === optId);
+  if (i < 0) return;
+  cached.messages[i] = { ...cached.messages[i], ...patch };
+  if (state.view.name === 'thread' && state.view.id === tid) renderConv();
+}
+
+function removeOptimistic(tid, optId) {
+  const cached = state.threadCache[tid];
+  if (!cached) return;
+  cached.messages = cached.messages.filter(m => m.id !== optId);
+  if (state.view.name === 'thread' && state.view.id === tid) renderConv();
+}
+
+async function onSendText() {
+  const input = $('#input');
+  const text = input?.value.trim() || '';
+  const tid = state.view.id;
+
+  // Media en attente : on l'envoie en optimistic; texte additionnel = 2eme envoi
+  if (state.pendingMedia) {
+    const pending = state.pendingMedia;
+    state.pendingMedia = null;
+    if (input) input.value = '';
+    renderConv();
+    sendMediaOptimistic(tid, pending);
+    if (text) sendTextOptimistic(tid, text);
+    return;
+  }
+
   if (!text) return;
-  btn.disabled = true;
+  input.value = '';
+  input.style.height = 'auto';
+  $('#btn-send').disabled = true;
+  sendTextOptimistic(tid, text);
+}
+
+async function sendTextOptimistic(tid, text) {
+  const optId = 'opt-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
+  const optMsg = {
+    id: optId,
+    text,
+    item_type: 'text',
+    user_id: state.me?.pk || null,
+    is_sent_by_viewer: true,
+    timestamp: nowTs(),
+    _pending: true,
+  };
+  insertOptimistic(tid, optMsg);
+
   try {
-    await fetch(`/api/threads/${view.id}/send`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
+    const r = await fetch(`/api/threads/${tid}/send`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ text }),
     });
-    input.value = '';
-    // Reload thread
-    const r = await fetch(`/api/threads/${view.id}`);
-    const data = await r.json();
-    messages = data.messages || [];
-    renderThread();
-  } catch (e) { alert('Erreur envoi: ' + e); }
-  finally { btn.disabled = false; }
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const real = await r.json();
+    const realMsg = { ...real, is_sent_by_viewer: true };
+    // Replace optimistic par le vrai. Si le WS a deja insere le real id,
+    // on retire l'optimistic au lieu de le remplacer (anti-doublon).
+    const cached = state.threadCache[tid];
+    if (cached) {
+      const optIdx = cached.messages.findIndex(m => m.id === optId);
+      const realAlready = cached.messages.some(m => m.id === real.id);
+      if (realAlready && optIdx >= 0) {
+        cached.messages.splice(optIdx, 1);
+      } else if (optIdx >= 0) {
+        cached.messages[optIdx] = realMsg;
+      }
+      if (state.view.name === 'thread' && state.view.id === tid) renderConv();
+    }
+    // Met a jour le last_message du thread avec le vrai (id IG correct)
+    const t = state.threads.find(x => x.id === tid);
+    if (t) patchThread({ ...t, last_message: realMsg, last_activity_at: realMsg.timestamp });
+  } catch (e) {
+    updateOptimistic(tid, optId, { _pending: false, _failed: true });
+    toast('Envoi KO: ' + e.message);
+  }
 }
 
+async function sendMediaOptimistic(tid, pending) {
+  const optId = 'opt-' + Date.now() + '-' + Math.random().toString(36).slice(2,8);
+  const optMsg = {
+    id: optId,
+    item_type: pending.kind === 'voice' ? 'voice_media' : 'media',
+    user_id: state.me?.pk || null,
+    is_sent_by_viewer: true,
+    timestamp: nowTs(),
+    _pending: true,
+  };
+  if (pending.kind === 'photo') {
+    optMsg._localPhotoUrl = pending.previewUrl;
+  } else if (pending.kind === 'voice') {
+    optMsg.text = '🎤 Envoi vocal...';
+  }
+  insertOptimistic(tid, optMsg);
+
+  try {
+    const fd = new FormData();
+    fd.append('file', pending.file);
+    const endpoint = pending.kind === 'voice' ? 'send_voice' : 'send_photo';
+    const r = await fetch(`/api/threads/${tid}/${endpoint}`, { method: 'POST', body: fd });
+    if (!r.ok) {
+      const err = await r.text();
+      throw new Error(err.slice(0, 200));
+    }
+    const real = await r.json();
+    const realMsg = { ...real, is_sent_by_viewer: true };
+    const cached = state.threadCache[tid];
+    if (cached) {
+      const i = cached.messages.findIndex(m => m.id === optId);
+      const realAlready = cached.messages.some(m => m.id === real.id);
+      if (realAlready && i >= 0) {
+        cached.messages.splice(i, 1);
+      } else if (i >= 0) {
+        cached.messages[i] = realMsg;
+      }
+      if (state.view.name === 'thread' && state.view.id === tid) renderConv();
+    }
+    const t = state.threads.find(x => x.id === tid);
+    if (t) patchThread({ ...t, last_message: realMsg, last_activity_at: realMsg.timestamp });
+    if (pending.previewUrl) URL.revokeObjectURL(pending.previewUrl);
+  } catch (e) {
+    updateOptimistic(tid, optId, { _pending: false, _failed: true });
+    toast('Envoi media KO: ' + e.message);
+  }
+}
+
+// ---------- File picker ----------
+filePhoto.onchange = fileCamera.onchange = (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  e.target.value = '';
+  state.pendingMedia = { kind: 'photo', file: f, previewUrl: URL.createObjectURL(f) };
+  if (state.view.name === 'thread') renderConv();
+};
+
+document.addEventListener('click', (e) => {
+  if (e.target.id === 'cancel-pending') {
+    if (state.pendingMedia?.previewUrl) URL.revokeObjectURL(state.pendingMedia.previewUrl);
+    state.pendingMedia = null;
+    if (state.view.name === 'thread') renderConv();
+  }
+});
+
+// ---------- Voice recording ----------
+async function startRecording(e) {
+  e.preventDefault();
+  if (state.recorder) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Safari iOS pref audio/mp4, Chrome/Firefox audio/webm
+    const mime = MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
+               : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+               : '';
+    const opts = mime ? { mimeType: mime } : {};
+    state.recorder = new MediaRecorder(stream, opts);
+    state.recordedChunks = [];
+    state.recorder.ondataavailable = (ev) => { if (ev.data.size) state.recordedChunks.push(ev.data); };
+    state.recorder.onstop = onRecordStop;
+    state.recorder._stream = stream;
+    state.recorder._startedAt = Date.now();
+    state.recorder._mime = mime;
+    state.recorder.start();
+    document.querySelector('#composer').classList.add('recording');
+    state.recorder._timer = setInterval(updateRecTime, 200);
+  } catch (e) {
+    toast('Micro inaccessible: ' + e.message);
+    state.recorder = null;
+  }
+}
+
+function updateRecTime() {
+  if (!state.recorder) return;
+  const sec = Math.floor((Date.now() - state.recorder._startedAt) / 1000);
+  const m = Math.floor(sec / 60), s = sec % 60;
+  const el = document.querySelector('#rec-time');
+  if (el) el.textContent = `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function stopRecording() {
+  if (!state.recorder) return;
+  if (state.recorder.state === 'recording') state.recorder.stop();
+}
+
+function cancelRecording() {
+  if (!state.recorder) return;
+  state.recorder._cancel = true;
+  if (state.recorder.state === 'recording') state.recorder.stop();
+}
+
+function onRecordStop() {
+  const r = state.recorder;
+  state.recorder = null;
+  clearInterval(r._timer);
+  r._stream.getTracks().forEach(t => t.stop());
+  const composer = document.querySelector('#composer');
+  if (composer) composer.classList.remove('recording');
+
+  if (r._cancel) return;
+  const dur = (Date.now() - r._startedAt) / 1000;
+  if (dur < 0.5) { toast('Trop court'); return; }
+
+  const ext = (r._mime.includes('mp4') ? 'm4a' : (r._mime.includes('webm') ? 'webm' : 'audio'));
+  const blob = new Blob(state.recordedChunks, { type: r._mime || 'application/octet-stream' });
+  const file = new File([blob], `voice.${ext}`, { type: blob.type });
+  state.pendingMedia = { kind: 'voice', file, previewUrl: null };
+
+  // Envoi immediat
+  const tid = state.view.id;
+  if (tid) {
+    sendMedia(tid, state.pendingMedia)
+      .catch(e => toast('Envoi vocal KO: ' + e.message))
+      .finally(() => {
+        state.pendingMedia = null;
+        if (state.view.name === 'thread') renderConv();
+      });
+  }
+}
+
+// ---------- WebSocket ----------
 function connectWS() {
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
-  ws.onmessage = (ev) => {
-    try {
-      const data = JSON.parse(ev.data);
-      if (data.type === 'thread_update') {
-        // Mettre à jour la liste
-        const idx = threads.findIndex(t => t.id === data.thread.id);
-        if (idx >= 0) threads[idx] = data.thread; else threads.unshift(data.thread);
-        if (view.name === 'list') renderList();
-        if (view.name === 'thread' && view.id === data.thread.id) {
-          // Refresh la conv en cours
-          openThread(view.id, view.title);
-        }
-      }
-    } catch (e) { console.error(e); }
-  };
-  ws.onclose = () => setTimeout(connectWS, 3000);
+  state.ws = new WebSocket(`${proto}://${location.host}/ws`);
+  state.ws.onmessage = onWsEvent;
+  state.ws.onclose = () => setTimeout(connectWS, 3000);
+  state.ws.onerror = () => {};
   // keep-alive
-  setInterval(() => { try { ws.send('ping'); } catch(e){} }, 25000);
+  setInterval(() => { try { state.ws.send('ping'); } catch(e){} }, 25000);
 }
 
-// utils
-function initials(s) { return (s||'?').split(/[\s,]+/).slice(0,2).map(x=>x[0]||'').join('').toUpperCase(); }
-function escapeHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
-function escapeAttr(s) { return escapeHtml(s); }
+function onWsEvent(ev) {
+  try {
+    const data = JSON.parse(ev.data);
+    if (data.type === 'message_new') {
+      const tid = data.thread_id;
+      const m = data.message;
+      if (data.thread) patchThread(data.thread);
+      // Si conv active = thread cible, gere l'arrivee
+      if (state.view.name === 'thread' && state.view.id === tid) {
+        mergeIncomingMessage(tid, m);
+        fetch(`/api/threads/${tid}/seen`, { method: 'POST' }).catch(()=>{});
+      }
+    } else if (data.type === 'thread_changed' || data.type === 'thread_update') {
+      patchThread(data.thread);
+    }
+  } catch (e) { console.error('WS event KO', e); }
+}
 
-// init
-renderList();
-loadThreads();
-connectWS();
+// ---------- Auto-refresh inbox ----------
+const INBOX_POLL_MS = 1000;
+let inboxPollTimer = null;
+
+function startInboxPoll() {
+  stopInboxPoll();
+  inboxPollTimer = setInterval(() => {
+    if (document.hidden) return;
+    if (state.view.name !== 'list') return;
+    // sync silencieux : pas de spinner, juste patch les diffs
+    fetch('/api/threads')
+      .then(r => r.ok ? r.json() : null)
+      .then(fresh => { if (fresh) setThreads(fresh); })
+      .catch(()=>{});
+  }, INBOX_POLL_MS);
+}
+function stopInboxPoll() {
+  if (inboxPollTimer) { clearInterval(inboxPollTimer); inboxPollTimer = null; }
+}
+
+// Au retour du tab : resync complet (WS a pu mourir en arriere-plan)
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    if (state.view.name === 'list') loadThreads();
+    if (state.view.name === 'thread') loadThread(state.view.id, true);
+    if (state.ws && state.ws.readyState !== WebSocket.OPEN) connectWS();
+  }
+});
+
+// ---------- Init ----------
+(async () => {
+  renderList();
+  await loadMe();
+  await loadThreads();
+  connectWS();
+  startInboxPoll();
+})();
 </script>
 </body>
 </html>
